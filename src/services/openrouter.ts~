@@ -1,0 +1,104 @@
+import OpenAI from 'openai';
+import { Message, ApiResponse } from '@/types';
+
+class OpenRouterService {
+  private client: OpenAI;
+  private apiKey: string;
+  private baseURL: string;
+
+  constructor() {
+    this.apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    this.baseURL = import.meta.env.VITE_OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+    
+    if (!this.apiKey) {
+      console.warn('OpenRouter API key not found. Please set VITE_OPENROUTER_API_KEY in your environment variables.');
+    }
+
+    this.client = new OpenAI({
+      apiKey: this.apiKey,
+      baseURL: this.baseURL,
+      dangerouslyAllowBrowser: true,
+    });
+  }
+
+  async sendMessage(
+    messages: Message[],
+    config: {
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      stream?: boolean;
+    } = {}
+  ): Promise<ApiResponse<any>> {
+    try {
+      if (!this.apiKey) {
+        throw new Error('OpenRouter API key not configured');
+      }
+
+      const {
+        model = 'openai/gpt-3.5-turbo',
+        temperature = 0.7,
+        maxTokens = 1000,
+        stream = true
+      } = config;
+
+      const openAIMessages = messages.map(msg => ({
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content
+      }));
+
+      const response = await this.client.chat.completions.create({
+        model,
+        messages: openAIMessages,
+        temperature,
+        max_tokens: maxTokens,
+        stream,
+      });
+
+      return {
+        data: response,
+        success: true
+      };
+    } catch (error) {
+      console.error('OpenRouter API error:', error);
+      return {
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        success: false
+      };
+    }
+  }
+
+  async getAvailableModels(): Promise<ApiResponse<any[]>> {
+    try {
+      if (!this.apiKey) {
+        throw new Error('OpenRouter API key not configured');
+      }
+
+      const response = await fetch(`${this.baseURL}/models`, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      return {
+        data: data.data || [],
+        success: true
+      };
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+      return {
+        error: error instanceof Error ? error.message : 'Failed to fetch models',
+        success: false
+      };
+    }
+  }
+}
+
+export const openRouterService = new OpenRouterService();
